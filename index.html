@@ -1781,13 +1781,14 @@ input[type=range].mhv5-range {
           </div>
         </div>
         <button class="ubtn" id="screen-btn" onclick="toggleScreenShare()" title="Compartir pantalla" style="font-size:.9rem;">🖥️</button>
-        <button class="ubtn" id="mic-btn" onclick="toggleMic()" title="Grabar voz" style="font-size:1rem;">🎤</button>
+        <button class="ubtn" id="mic-btn" onclick="toggleMic()" title="Grabar voz — o decí 'Hey MAX'" style="font-size:1rem;">🎤</button>
         <button class="send-btn" id="send-btn" onclick="send()">
           <svg viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
       <div id="input-footer" style="display:flex;align-items:center;justify-content:center;gap:12px;margin-top:5px;">
-        <div class="ihint">ENTER · enviar &nbsp;·&nbsp; SHIFT+ENTER · nueva línea &nbsp;·&nbsp; 📎 · archivo &nbsp;·&nbsp; 🌐 · web &nbsp;·&nbsp; 📡 · relay PC↔📱 &nbsp;·&nbsp; 🎙 · mic</div>
+        <div class="ihint">ENTER · enviar &nbsp;·&nbsp; SHIFT+ENTER · nueva línea &nbsp;·&nbsp; 📎 · archivo &nbsp;·&nbsp; 🌐 · web &nbsp;·&nbsp; 📡 · relay PC↔📱 &nbsp;·&nbsp; 👂 di "Hey MAX"</div>
+        <button id="wake-btn" onclick="toggleWakeWord()" style="background:transparent;border:1px solid var(--border);color:var(--text3);padding:3px 10px;border-radius:2px;cursor:pointer;font-family:Rajdhani,sans-serif;font-size:.55rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;transition:all .2s;white-space:nowrap;" title="Activar wake word">👂 WAKE</button>
       </div>
     </div>
   </div>
@@ -2001,7 +2002,12 @@ function profileLogin(profileId,username){
     checkOrientation&&checkOrientation();
     initCloudFromFirebase();
     registerRelayDevice();
-    // Wake desactivado
+    // ── AUTO WAKE WORD EN PC ──
+    if(!IS_MOBILE){
+      wakeEnabled=true;
+      updateWakeBtn();
+      ensureMicPermission().then(ok=>{if(ok)startWakeWord();});
+    }
   },800);
 }
 function profileLogout(){
@@ -3683,10 +3689,6 @@ let _skipBatch=false;
 let _pendingRestart=false; // onend disparó mientras estaba oculta la pestaña
 let _engineStarted=false;  // .start() ya fue llamado al menos una vez
 
-// ── CORRECCIÓN FONÉTICA ──
-const _VF=[[/\bdisco(?:r|s|rd)?\b(?!\s*(?:teca|graf|duro|compacto|vinilo|de\s))/gi,'Discord'],[/\bdis\s*cord?\b/gi,'Discord'],[/\bthis\s*cord\b/gi,'Discord'],[/\bdiskord?\b/gi,'Discord'],[/\bloa\s*mi\b/gi,'Lonami'],[/\blo\s+nami\b/gi,'Lonami'],[/\blonani\b/gi,'Lonami'],[/\blo ami\b/gi,'Lonami'],[/\blon ami\b/gi,'Lonami'],[/\bloomi\b/gi,'Lonami'],[/\blonomi\b/gi,'Lonami'],[/\blona\s*mi\b/gi,'Lonami']];
-function _vc(t){if(!t)return t;let o=t;for(const[r,s]of _VF)o=o.replace(r,s);return o;}
-
 // ── WAKE WORDS ──
 const WAKE_VARIANTS=[
   // solas
@@ -3716,6 +3718,8 @@ const STOP_CMDS=[
   'detener mic','detener el mic','apagar mic','cerrar mic','desactivar mic',
   // inglés
   'stop listening','stop voice','stop audio','stop recording',
+  // simples de emergencia
+  'stop','para','silencio',
 ];
 
 // Verifica si el texto ES SOLO un stop command (no en medio de una oración)
@@ -3928,7 +3932,7 @@ function _buildSR(){
       if(_srResult.trim()){
         _silenceTimer=setTimeout(()=>{
           if(SR_MODE==='active'){
-            const val=_vc(_srResult.trim().replace(/[¿¡]/g,'').replace(/[?!]+$/,'').trim();
+            const val=_srResult.trim().replace(/[¿¡]/g,'').replace(/[?!]+$/,'').trim();
             _srResult='';_srConfirmed='';
             // Interceptar comandos de cámara en modo active
             const valLow=val.toLowerCase();
@@ -3945,7 +3949,7 @@ function _buildSR(){
             inp2.value=val;inp2.style.height='auto';
             inp2.style.height=Math.min(inp2.scrollHeight,150)+'px';
             hideMicToast();
-            showMicToast('\uD83C\uDF99 Escuchando... (di "stop mic" para parar)');
+            showMicToast('\uD83C\uDF99 Escuchando... (di "hey max stop mic" para parar)');
             setTimeout(()=>send(),200);
           }
         }, SILENCE_DELAY);
@@ -4009,7 +4013,7 @@ function _enterActiveMode(){
   window.speechSynthesis?.cancel();
   const inp=document.getElementById('chat-input');
   inp.value='';
-  inp.placeholder='\uD83C\uDF99 Escuchando... pausá 3 seg para enviar · di "stop mic" para parar';
+  inp.placeholder='\uD83C\uDF99 Escuchando... pausá 3 seg para enviar · di "hey max stop mic" para parar';
   showMicToast('\uD83C\uDF99 Escuchando — pausá 3 segundos para enviar');
 }
 
@@ -4019,7 +4023,7 @@ function _deactivateMic(){
   micActive=false;
   _updateMicUI();
   const inp=document.getElementById('chat-input');
-  inp.placeholder='¿Cuál es la misión, jefe? · Pegá una URL · 🎙 mic';
+  inp.placeholder='¿Cuál es la misión, jefe? · Pegá una URL · di "Hey MAX" para activar voz';
   showMicToast('\uD83C\uDF99 Mic desactivado');setTimeout(hideMicToast,2000);
 }
 
@@ -4030,7 +4034,7 @@ function _leaveActiveMode(sendIt){
   micActive=false;
   _updateMicUI();
   const inp=document.getElementById('chat-input');
-  inp.placeholder='¿Cuál es la misión, jefe? · Pegá una URL · 🎙 mic';
+  inp.placeholder='¿Cuál es la misión, jefe? · Pegá una URL · di "Hey MAX" para activar voz';
   const val=inp.value.trim();
   if(sendIt&&val){hideMicToast();setTimeout(()=>send(),300);}
   else if(!val)setTimeout(hideMicToast,2500);
@@ -4088,6 +4092,7 @@ function toggleMic(){
   }else{
     _ensureEngine().then(ok=>{
       if(!ok)return;
+      if(SR_MODE==='idle'){SR_MODE='wake';}
       _enterActiveMode();
     });
   }
@@ -4109,7 +4114,18 @@ function stopWakeWord(){
   if(SR_MODE==='wake'){SR_MODE='idle';_updateMicUI();}
 }
 function updateMicBtnState(){_updateMicUI();}
-function toggleWakeWord(){return;}
+function toggleWakeWord(){
+  if(!SR){alert('Tu navegador no soporta reconocimiento de voz.');return;}
+  if(wakeEnabled){
+    wakeEnabled=false;stopWakeWord();updateWakeBtn();
+  }else{
+    _ensureEngine().then(ok=>{
+      if(!ok)return;
+      wakeEnabled=true;SR_MODE='wake';
+      updateWakeBtn();_updateMicUI();
+    });
+  }
+}
 function updateWakeBtn(){
   const btn=document.getElementById('wake-btn');if(!btn)return;
   if(wakeEnabled){btn.style.background='rgba(var(--theme-rgb),.08)';btn.style.borderColor='rgba(var(--theme-rgb),.4)';btn.style.color='var(--cyan)';btn.textContent='\uD83D\uDC42 WAKE ON';}
@@ -4358,7 +4374,12 @@ function updateModBtn(username){const isAdmin=username&&username.toLowerCase()==
     setTimeout(()=>{
       updateMobProfileBadge();
       checkOrientation();
-      // Wake desactivado
+      // ── AUTO WAKE WORD EN PC ──
+      if(!IS_MOBILE&&SR){
+        wakeEnabled=true;
+        updateWakeBtn();
+        ensureMicPermission().then(ok=>{if(ok)startWakeWord();});
+      }
     },800);
   }else{
     busy=false;document.getElementById('send-btn').disabled=false;showLoginScreen();
@@ -5433,7 +5454,7 @@ console.log('%cMAX v6 OK','color:#00d4ff;font-weight:bold;font-size:13px');
               <span class="mhv5-tl" id="mhv5-vlbl">VOZ OFF</span>
               <div class="mhv5-sw"></div>
             </div>
-            <div class="mhv5-tog" id="mhv5-wtog" onclick="mhv5TWake()" style="display:none;">
+            <div class="mhv5-tog" id="mhv5-wtog" onclick="mhv5TWake()">
               <span class="mhv5-ti">👂</span>
               <span class="mhv5-tl" id="mhv5-wlbl">WAKE WORD OFF</span>
               <div class="mhv5-sw"></div>
